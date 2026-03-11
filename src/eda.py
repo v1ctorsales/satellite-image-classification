@@ -5,9 +5,9 @@ import numpy as np
 import os
 
 CSV_FILES = {
-    "Train":      "C:/Users/Victo/PycharmProjects/satellite-image-classification/data/train.csv",
-    "Validation": "C:/Users/Victo/PycharmProjects/satellite-image-classification/data/validation.csv",
-    "Test":       'C:/Users/Victo/PycharmProjects/satellite-image-classification/data/test.csv',
+    "Train":      "../data/train.csv",
+    "Validation": "../data/validation.csv",
+    "Test":       '../data/test.csv',
 }
 
 CLASS_ORDER = [
