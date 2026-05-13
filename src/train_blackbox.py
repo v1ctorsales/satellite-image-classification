@@ -10,15 +10,15 @@ import joblib
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, matthews_corrcoef
 from skimage.feature import hog
 from skimage.color import rgb2gray
 
 warnings.filterwarnings("ignore")
 
 # ── Configuration
-PREPROCESSING_DIR = Path("preprocessing_outputs")
-OUTPUT_DIR        = Path("model_outputs/blackbox")
+PREPROCESSING_DIR = Path(__file__).parent.parent / "preprocessing_outputs"
+OUTPUT_DIR        = Path(__file__).parent.parent / "model_outputs/blackbox"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 IMG_SIZE      = (64, 64)
@@ -121,6 +121,26 @@ def build_models() -> dict:
 def train():
     t0 = time.time()
 
+    # ── Diagnóstico: verifica se há imagens repetidas entre splits
+    print("\n[DIAGNOSTICO] Verificando sobreposição entre splits...")
+    splits_paths = {}
+    for split in ["train", "validation", "test"]:
+        csv_path = PREPROCESSING_DIR / f"{split}_remapped.csv"
+        df_check = pd.read_csv(csv_path)
+        splits_paths[split] = set(df_check["ImagePath"].tolist())
+
+    train_val = splits_paths["train"] & splits_paths["validation"]
+    train_test = splits_paths["train"] & splits_paths["test"]
+    val_test = splits_paths["validation"] & splits_paths["test"]
+
+    print(f"  Train ∩ Validation : {len(train_val)} imagens em comum")
+    print(f"  Train ∩ Test       : {len(train_test)} imagens em comum")
+    print(f"  Validation ∩ Test  : {len(val_test)} imagens em comum")
+    if train_val or train_test:
+        print("  ⚠️  LEAKAGE DETECTADO — imagens do treino presentes na avaliação!")
+    else:
+        print("  ✅ Sem sobreposição — splits limpos")
+
     X_train, y_train = load_split("train")
     X_val,   y_val   = load_split("validation")
     X_test,  y_test  = load_split("test")
@@ -140,13 +160,14 @@ def train():
 
         for split_name, X, y in [("validation", X_val, y_val), ("test", X_test, y_test)]:
             y_pred = model.predict(X)
-            acc    = accuracy_score(y, y_pred)
+            acc = accuracy_score(y, y_pred)
+            mcc = matthews_corrcoef(y, y_pred)
             report = classification_report(y, y_pred, target_names=SUPER_CLASSES, output_dict=True)
-            cm     = confusion_matrix(y, y_pred).tolist()
+            cm = confusion_matrix(y, y_pred).tolist()
             model_results[split_name] = {
-                "accuracy": acc, "report": report, "confusion_matrix": cm
+                "accuracy": acc, "mcc": mcc, "report": report, "confusion_matrix": cm
             }
-            print(f"\n  [{split_name.upper()}] Accuracy: {acc:.4f}")
+            print(f"\n  [{split_name.upper()}] Accuracy: {acc:.4f}  |  MCC: {mcc:.4f}")
             print(classification_report(y, y_pred, target_names=SUPER_CLASSES))
 
         results[name] = model_results

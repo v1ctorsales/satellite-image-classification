@@ -16,9 +16,9 @@ from skimage.color import rgb2gray
 
 warnings.filterwarnings("ignore")
 
-# ── Configuration 
-PREPROCESSING_DIR = Path("preprocessing_outputs")
-OUTPUT_DIR        = Path("model_outputs/whitebox")
+# ── Configuration
+PREPROCESSING_DIR = Path(__file__).parent.parent / "preprocessing_outputs"
+OUTPUT_DIR        = Path(__file__).parent.parent / "model_outputs/whitebox"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 IMG_SIZE      = (64, 64)          # resize all images
