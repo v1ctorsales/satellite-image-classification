@@ -1,8 +1,8 @@
 import pandas as pd
 from pathlib import Path
 
-DATA_DIR   = Path("../data")
-OUTPUT_DIR = Path("preprocessing_outputs")
+DATA_DIR   = Path(__file__).parent.parent / "data"
+OUTPUT_DIR = Path(__file__).parent.parent / "preprocessing_outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 CLASS_REMAP = {
