@@ -1,64 +1,120 @@
-import numpy as np
+"""
+predict.py — Inference module
+==============================
+Loads the trained model lazily (only on first use) and exposes a single
+public function:
+
+    predict(image: Image.Image) -> PredictionResult
+
+The model is never loaded at import time — this prevents the API from
+crashing on startup if the model file does not exist yet.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
 from pathlib import Path
-from PIL import Image
+
 import joblib
-from skimage.feature import hog
+import numpy as np
+from PIL import Image
 from skimage.color import rgb2gray
+from skimage.feature import hog
 
-IMG_SIZE   = (64, 64)
-N_BINS     = 32
-HOG_PIXELS = 8
-HOG_CELLS  = 2
+# ── Paths & constants ─────────────────────────────────────────────────────────
+
+MODEL_PATH    = Path(__file__).parent.parent / "outputs" / "model" / "model.joblib"
 SUPER_CLASSES = ["Agriculture", "Vegetation", "Urban", "Water"]
+IMG_SIZE      = (64, 64)
+N_BINS        = 32
+HOG_PIXELS    = 8
+HOG_CELLS     = 2
 
-BLACKBOX_PATH = Path(__file__).parent.parent / "model_outputs/blackbox/blackbox_best_model.joblib"
-WHITEBOX_PATH = Path(__file__).parent.parent / "model_outputs/whitebox/whitebox_best_model.joblib"
+# ── Lazy model loader ─────────────────────────────────────────────────────────
 
-blackbox_model = joblib.load(BLACKBOX_PATH)
-whitebox_model = joblib.load(WHITEBOX_PATH)
-
-
-def extract_color_histogram(img_array: np.ndarray) -> np.ndarray:
-    features = []
-    for ch in range(3):
-        hist, _ = np.histogram(img_array[:, :, ch], bins=N_BINS, range=(0, 256))
-        hist = hist.astype(float) / (hist.sum() + 1e-8)
-        features.append(hist)
-    return np.concatenate(features)
+_model = None   # module-level cache; populated on first call to predict()
 
 
-def extract_hog_features(img_array: np.ndarray) -> np.ndarray:
-    gray = rgb2gray(img_array)
-    return hog(gray, orientations=8,
-               pixels_per_cell=(HOG_PIXELS, HOG_PIXELS),
-               cells_per_block=(HOG_CELLS, HOG_CELLS),
-               feature_vector=True)
+def _load_model():
+    """
+    Loads the model from disk the first time it is needed.
+    Raises a clear error if the file is missing, instead of crashing
+    silently at import time.
+    """
+    global _model
+    if _model is None:
+        if not MODEL_PATH.exists():
+            raise FileNotFoundError(
+                f"Model file not found at {MODEL_PATH}. "
+                "Run train.py first to generate it."
+            )
+        _model = joblib.load(MODEL_PATH)
+    return _model
 
 
-def _extract(image: Image.Image) -> np.ndarray:
-    img = image.convert("RGB").resize(IMG_SIZE)
-    arr = np.array(img)
-    return np.concatenate([extract_color_histogram(arr), extract_hog_features(arr)]).reshape(1, -1)
+# ── Feature extraction (mirrors train.py exactly) ────────────────────────────
+
+def _color_histogram(image_array: np.ndarray) -> np.ndarray:
+    channel_histograms = []
+    for channel in range(3):
+        hist, _ = np.histogram(image_array[:, :, channel], bins=N_BINS, range=(0, 256))
+        hist = hist / (hist.sum() + 1e-8)
+        channel_histograms.append(hist)
+    return np.concatenate(channel_histograms)
 
 
-def _build_result(model, features: np.ndarray) -> dict:
-    label_idx  = model.predict(features)[0]
-    proba      = model.predict_proba(features)[0]
-    confidence = float(proba[label_idx])
-    label      = SUPER_CLASSES[label_idx]
-    return {
-        "label": label,
-        "confidence": round(confidence, 4),
-        "probabilities": {
-            SUPER_CLASSES[i]: round(float(proba[i]), 4)
-            for i in range(len(SUPER_CLASSES))
-        }
-    }
+def _hog_features(image_array: np.ndarray) -> np.ndarray:
+    grayscale = rgb2gray(image_array)
+    return hog(
+        grayscale,
+        orientations=8,
+        pixels_per_cell=(HOG_PIXELS, HOG_PIXELS),
+        cells_per_block=(HOG_CELLS, HOG_CELLS),
+        feature_vector=True,
+    )
 
 
-def predict_image(image: Image.Image) -> dict:
-    return _build_result(blackbox_model, _extract(image))
+def _extract_features(image: Image.Image) -> np.ndarray:
+    """Converts a PIL image to the feature vector expected by the model."""
+    array = np.array(image.convert("RGB").resize(IMG_SIZE))
+    features = np.concatenate([_color_histogram(array), _hog_features(array)])
+    return features.reshape(1, -1)   # shape (1, n_features) for scikit-learn
 
 
-def predict_image_whitebox(image: Image.Image) -> dict:
-    return _build_result(whitebox_model, _extract(image))
+# ── Public result type ────────────────────────────────────────────────────────
+
+@dataclass
+class PredictionResult:
+    label:         str
+    confidence:    float
+    probabilities: dict[str, float]
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def predict(image: Image.Image) -> PredictionResult:
+    """
+    Classifies a satellite image into one of four superclasses:
+        Agriculture, Vegetation, Urban, Water
+
+    Args:
+        image: PIL Image (any mode — converted to RGB internally)
+
+    Returns:
+        PredictionResult with the predicted label, confidence score,
+        and full probability distribution across all classes.
+    """
+    model    = _load_model()
+    features = _extract_features(image)
+
+    label_idx = int(model.predict(features)[0])
+    proba     = model.predict_proba(features)[0]
+
+    return PredictionResult(
+        label=SUPER_CLASSES[label_idx],
+        confidence=round(float(proba[label_idx]), 4),
+        probabilities={
+            cls: round(float(proba[i]), 4)
+            for i, cls in enumerate(SUPER_CLASSES)
+        },
+    )
