@@ -50,14 +50,16 @@ pip install -r requirements.txt
 
 ### 3. Add the dataset
 
-Download [EuroSAT](https://github.com/phelber/EuroSAT) and place the files under `data/`:
+Download [EuroSAT Dataset (RGB)](https://github.com/phelber/EuroSAT) and place the files under `data/`:
 
 ```
 data/
 ├── train.csv
 ├── validation.csv
 ├── test.csv
-└── <image folders>/
+├── AnnualCrop
+├── Forest
+└── <other image folders>/
 ```
 
 ### 4. Run the pipeline
