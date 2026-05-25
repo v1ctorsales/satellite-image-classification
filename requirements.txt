@@ -1,4 +1,8 @@
-pandas
-numpy
 fastapi
 uvicorn
+scikit-learn
+scikit-image
+pandas
+numpy
+pillow
+joblib
