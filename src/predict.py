@@ -93,17 +93,6 @@ class PredictionResult:
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def predict(image: Image.Image) -> PredictionResult:
-    """
-    Classifies a satellite image into one of four superclasses:
-        Agriculture, Vegetation, Urban, Water
-
-    Args:
-        image: PIL Image (any mode — converted to RGB internally)
-
-    Returns:
-        PredictionResult with the predicted label, confidence score,
-        and full probability distribution across all classes.
-    """
     model    = _load_model()
     features = _extract_features(image)
 
